@@ -1,0 +1,31 @@
+{
+  "name": "y5",
+  "version": "0.1.2",
+  "description": "simple yamaha remote",
+  "main": "y5.js",
+  "author": {
+    "name": "soef",
+    "email": "soef@gmx.net"
+  },
+  "contributors": [
+    {
+      "name": "soef",
+      "email": "soef@gmx.net"
+    }
+  ],
+  "homepage": "https://github.com/soef/y5",
+  "license": "MIT",
+  "keywords": [
+    "yamaha"
+  ],
+  "dependencies": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soef/y5.git"
+  },
+  "bugs": {
+    "url": "https://github.com/soef/y5/issues"
+  },
+  "readmeFilename": "readme.md"
+}
