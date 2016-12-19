@@ -1,6 +1,6 @@
 {
   "name": "y5",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "simple yamaha remote",
   "main": "y5.js",
   "author": {

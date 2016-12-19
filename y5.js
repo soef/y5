@@ -1,8 +1,7 @@
 "use strict";
 
 var net = require('net');
-const
-    dolog = false;
+var dolog = true;
 
 var Y5 = function (ip, cb) {
     if (!(this instanceof Y5)) {
