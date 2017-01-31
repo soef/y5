@@ -1,7 +1,7 @@
 "use strict";
 
 var net = require('net');
-var dolog = true;
+var dolog = false;
 
 var Y5 = function (ip, cb) {
     if (!(this instanceof Y5)) {
@@ -11,10 +11,32 @@ var Y5 = function (ip, cb) {
         cb = ip;
         ip = undefined;
     }
+    this.setLog = function (bo) {
+        dolog = bo;
+    }
     var self = this;
     var interval, client, oTimeout, oConnected;
+    var re = /@(.*):(.*)=(.*)/;
     
-    this.onData = function (data) {};
+    this.onEvent = function(event) {};
+    this.onLine = function(line)  {
+        var a = re.exec(line);
+        if (a && a.length > 3) {
+            var obj = {
+                section: a[1],
+                state: a[2],
+                value: a[3]
+            };
+            this.onEvent(obj);
+        }
+    }
+    this.onData = function (data) {
+        data = data.toString().replace(/\r\n$/, '');
+        var ar = data.split('\r\n');
+        ar.forEach(function (line) {
+            this.onLine(line);
+        }.bind(this));
+    };
     this.onTimeout = function () {};
     
     client = new net.Socket();
