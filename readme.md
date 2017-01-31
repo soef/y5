@@ -1,4 +1,3 @@
-##y5
 ###Simple API for Yamaha Receiver 
 
 [![NPM version](http://img.shields.io/npm/v/y5.svg)](https://www.npmjs.com/package/y5)
@@ -7,15 +6,15 @@
 <!--[![Tests](http://img.shields.io/travis/soef/y5.miele/master.svg)](https://travis-ci.org/soef/y5)-->
 
 
-#### Description
+### Description
 
 Realtime Event API for Yamaha Receiver.
 
-#### Important
+### Important
 
 Yamaha allows only one client connection at a time! 
 
-####Some examples
+### Some examples
 Only listening on state changes:
 ```javascript
 var Y5 = require('y5');
