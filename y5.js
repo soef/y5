@@ -52,12 +52,21 @@ var Y5 = function (ip, cb) {
                     return;
             case 'ECONNRESET':
             case 'EPIPE':
-                if (oTimeout) clearTimeout(oTimeout);
+                //if (oTimeout) clearTimeout(oTimeout);
+                clearOTimeout();
                 oTimeout = setTimeout(self.reconnect.bind(self), 3000);
                 break;
         }
     });
-    client.on('close', function() {
+    
+    function clearOTimeout() {
+        if (oTimeout) {
+            clearTimeout(oTimeout);
+            oTimeout = null;
+        }
+    }
+    
+    client.on('close', function(v) {
         dolog && console.log('Connection closed');
         if (oConnected !== undefined) {
             if (oConnected) clearTimeout(oConnected);
@@ -67,6 +76,7 @@ var Y5 = function (ip, cb) {
     });
     
     this.close = function (setClient2null) {
+        clearOTimeout();
         if (interval) {
             clearInterval(interval);
             interval = null;
