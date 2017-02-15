@@ -1,7 +1,7 @@
 "use strict";
 
 var net = require('net');
-var dolog = false;
+var log = undefined; //console.log;
 
 var Y5 = function (ip, cb) {
     if (!(this instanceof Y5)) {
@@ -11,15 +11,19 @@ var Y5 = function (ip, cb) {
         cb = ip;
         ip = undefined;
     }
+    this.setlog =
     this.setLog = function (bo) {
-        dolog = bo;
-    }
+        log = (typeof bo === 'function') ? bo : bo ? console.log : undefined;
+    };
     var self = this;
+    var reconnectCnt = 0;
     var interval, client, oTimeout, oConnected;
     var re = /@(.*):(.*)=(.*)/;
     
-    this.onEvent = function(event) {};
-    this.onLine = function(line)  {
+    this.pingMainPowerInterval = 30000;
+    this.onEvent = function (event) {
+    };
+    this.onLine = function (line) {
         var a = re.exec(line);
         if (a && a.length > 3) {
             var obj = {
@@ -29,7 +33,7 @@ var Y5 = function (ip, cb) {
             };
             this.onEvent(obj);
         }
-    }
+    };
     this.onData = function (data) {
         data = data.toString().replace(/\r\n$/, '');
         var ar = data.split('\r\n');
@@ -37,26 +41,35 @@ var Y5 = function (ip, cb) {
             this.onLine(line);
         }.bind(this));
     };
-    this.onTimeout = function () {};
+    this.onTimeout = function () {
+    };
     
     client = new net.Socket();
-    client.on('data', function(data) {
+    client.on('data', function (data) {
+        log && log('Y5: on data: ' + data.toString());
         self.onData(data);
     });
     //client.on('end', function() {});
     client.on('error', function (error) {
-        dolog && console.log('error: ' + error.errno + ' ' + error.message);
+        log && log('Y5: error: ' + error.errno + ' ' + error.message);
+        var to = 3000;
         switch (error.errno) { //error.code
             case 'ETIMEDOUT':
-                if (self.onTimeout() === true)
-                    return;
+                if (self.onTimeout() === true) return;
+                to = 0;
+                break;
+            //case 'ECONNREFUSED': to = 1000; break;
             case 'ECONNRESET':
             case 'EPIPE':
+                to = reconnectCnt++ < 5 ? 500 : 3000;
                 //if (oTimeout) clearTimeout(oTimeout);
-                clearOTimeout();
-                oTimeout = setTimeout(self.reconnect.bind(self), 3000);
+                //clearOTimeout();
+                //oTimeout = setTimeout(self.reconnect.bind(self), reconnectCnt++ < 5 ? 10 : 3000);
                 break;
+            default: return;
         }
+        clearOTimeout();
+        oTimeout = setTimeout(self.reconnect.bind(self), to);
     });
     
     function clearOTimeout() {
@@ -66,8 +79,8 @@ var Y5 = function (ip, cb) {
         }
     }
     
-    client.on('close', function(v) {
-        dolog && console.log('Connection closed');
+    client.on('close', function (hadError) {
+        log && log('Y5: Connection closed, hadError=' + hadError);
         if (oConnected !== undefined) {
             if (oConnected) clearTimeout(oConnected);
             if (oConnected === null) cb && cb('close');
@@ -87,18 +100,21 @@ var Y5 = function (ip, cb) {
         }
         if (setClient2null !== false) client = null;
     };
-
-    this.connect = function(_ip) {
+    
+    this.connect = function (_ip) {
         ip = _ip || ip;
-        if (!client) return cb && cb('!client');
-        client.connect(50000, ip, function() {
-            dolog && console.log('connected...');
+        if (!client) return cb && cb('client is null');
+        log && log('Y5: trying to connect...');
+        client.connect(50000, ip, function () {
+            reconnectCnt = 0;
+            log && log('Y5: connected!');
             self.send('@MAIN:PWR=?');
-            interval = setInterval(function() {
+            self.send('@ZONE2:PWR=?');
+            if (self.pingMainPowerInterval) interval = setInterval(function () {
                 self.send('@MAIN:PWR=?');
-            }, 30000);
-            oConnected = setTimeout(function() {
-                dolog && console.log('oConnected = null -> cb()');
+            }, self.pingMainPowerInterval);
+            oConnected = setTimeout(function () {
+                log && log('Y5: in Timer, setting oConnected to null and calling cb()');
                 oConnected = null;
                 cb && cb();
             }, 2000)
@@ -106,17 +122,22 @@ var Y5 = function (ip, cb) {
     };
     
     this.send = function (s) {
-        client.write(s + '\r\n');
+        client.write(s + '\r\n', function(err,d) {
+            log && log('Y5: ' + s + ' written');
+        });
     };
     
     this.reconnect = function () {
-        dolog && console.log('reconnecting...');
+        log && log('Y5: reconnecting...');
         this.close(false);
         this.connect();
     };
+    this.powerConnected = function () {
+        setTimeout(this.reconnect.bind(this), 10000);
+    };
     this.getClient = function () {
         return client;
-    }
+    };
     
     if (ip) this.connect(ip);
 };
