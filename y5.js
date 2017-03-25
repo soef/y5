@@ -3,24 +3,33 @@
 var net = require('net');
 var log = undefined; //console.log;
 
-var Y5 = function (ip, cb) {
+var Y5 = function (ip, timeout, cb) {
     if (!(this instanceof Y5)) {
-        return new Y5(ip, cb);
+        return new Y5(ip, timeout, cb);
     }
     if (typeof ip === 'function') {
         cb = ip;
         ip = undefined;
+        timeout = undefined;
     }
-    this.setlog =
-    this.setLog = function (bo) {
+    if (typeof timeout === 'function') {
+        cb = timeout;
+        timeout = undefined;
+    }
+    function doCb(v) {
+        cb && cb(v);
+        cb = null;
+    }
+    this.setlog = this.setLog = function (bo) {
         log = (typeof bo === 'function') ? bo : bo ? console.log : undefined;
     };
     var self = this;
     var reconnectCnt = 0;
-    var interval, client, oTimeout, oConnected;
+    var interval, client, reconnectTimer, connectTimer;
     var re = /@(.*):(.*)=(.*)/;
     
     this.pingMainPowerInterval = 30000;
+    this.dataReceived = false;
     this.onEvent = function (event) {
     };
     this.onLine = function (line) {
@@ -46,7 +55,8 @@ var Y5 = function (ip, cb) {
     
     client = new net.Socket();
     client.on('data', function (data) {
-        log && log('Y5: on data: ' + data.toString());
+        log && log('Y5: on data: ' + data.toString().replace(/\r\n$/, ''));
+        self.dataReceived = true;
         self.onData(data);
     });
     //client.on('end', function() {});
@@ -61,35 +71,26 @@ var Y5 = function (ip, cb) {
             //case 'ECONNREFUSED': to = 1000; break;
             case 'ECONNRESET':
             case 'EPIPE':
-                to = reconnectCnt++ < 5 ? 500 : 3000;
-                //if (oTimeout) clearTimeout(oTimeout);
-                //clearOTimeout();
-                //oTimeout = setTimeout(self.reconnect.bind(self), reconnectCnt++ < 5 ? 10 : 3000);
+                //to = reconnectCnt++ < 5 ? 500 : 3000;
+                to = 2000;
                 break;
-            default: return;
+            case 'ECANCELED': // called after destroy during connecting.
+            default:
+                return;
         }
-        clearOTimeout();
-        oTimeout = setTimeout(self.reconnect.bind(self), to);
+        self.setReconnectTimer (to);
     });
     
-    function clearOTimeout() {
-        if (oTimeout) {
-            clearTimeout(oTimeout);
-            oTimeout = null;
-        }
-    }
-    
     client.on('close', function (hadError) {
+        self.dataReceived = false;
         log && log('Y5: Connection closed, hadError=' + hadError);
-        if (oConnected !== undefined) {
-            if (oConnected) clearTimeout(oConnected);
-            if (oConnected === null) cb && cb('close');
-            oConnected = undefined;
-        }
+        doCb('close');
+        if (hadError) self.setReconnectTimer(2000);
     });
     
     this.close = function (setClient2null) {
-        clearOTimeout();
+        clearReconnectTimer ();
+        clearConnectTimer();
         if (interval) {
             clearInterval(interval);
             interval = null;
@@ -99,41 +100,92 @@ var Y5 = function (ip, cb) {
             //client.end();
         }
         if (setClient2null !== false) client = null;
+        self.dataReceived = false;
     };
+    
+    client.on('connect', function() {
+        clearConnectTimer ();
+        log && log('Y5: on connect');
+        reconnectCnt = 0;
+        self.dataReceived = false;
+        log && log('Y5: connected! ');
+        self.send('@MAIN:PWR=?');
+        self.send('@ZONE2:PWR=?');
+        if (self.pingMainPowerInterval) interval = setInterval(function () {
+            self.send('@MAIN:PWR=?');
+        }, self.pingMainPowerInterval);
+        doCb();
+    });
     
     this.connect = function (_ip) {
         ip = _ip || ip;
-        if (!client) return cb && cb('client is null');
-        log && log('Y5: trying to connect...');
+        if (!client) return doCb ('client is null');
+        if (client._connecting) {
+            log && log('Y5: connect called during connecting. returning now');
+            return doCb('is already in connection');
+        }
+        log && log('Y5: trying to connect... ');
+        //if (timeout) client.setTimeout(timeout);
+        if (timeout) self.setConnectTimer(timeout);
+
         client.connect(50000, ip, function () {
-            reconnectCnt = 0;
-            log && log('Y5: connected!');
-            self.send('@MAIN:PWR=?');
-            self.send('@ZONE2:PWR=?');
-            if (self.pingMainPowerInterval) interval = setInterval(function () {
-                self.send('@MAIN:PWR=?');
-            }, self.pingMainPowerInterval);
-            oConnected = setTimeout(function () {
-                log && log('Y5: in Timer, setting oConnected to null and calling cb()');
-                oConnected = null;
-                cb && cb();
-            }, 2000)
+            // reconnectCnt = 0;
+            // log && log('Y5: connected! ' + _no);
+            // self.send('@MAIN:PWR=?');
+            // self.send('@ZONE2:PWR=?');
+            // if (self.pingMainPowerInterval) interval = setInterval(function () {
+            //     self.send('@MAIN:PWR=?');
+            // }, self.pingMainPowerInterval);
+            // doCb();
         });
     };
     
     this.send = function (s) {
+        if (!client.writable) {
+            log && log('send called with writable=false');
+        }
         client.write(s + '\r\n', function(err,d) {
             log && log('Y5: ' + s + ' written');
         });
     };
     
     this.reconnect = function () {
-        log && log('Y5: reconnecting...');
+        log && log('Y5: reconnecting... ');
+        reconnectTimer = null;
         this.close(false);
         this.connect();
     };
+    
+    function clearReconnectTimer() {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+    }
+    this.setReconnectTimer = function(to) {
+        log && log('Y5: setReconnectTimer (' + to + ')');
+        clearReconnectTimer ();
+        reconnectTimer = setTimeout(self.reconnect.bind(self), to);
+    }
+    function clearConnectTimer() {
+        if (connectTimer) {
+            clearTimeout(connectTimer);
+            connectTimer = null;
+        }
+    }
+    this.setConnectTimer = function(to) {
+        clearConnectTimer ();
+        connectTimer = setTimeout(function() {
+            connectTimer = null;
+            //self.reconnect.bind(self, 'timeout'), to
+            log && log('Y5: on timeout');
+            self.onTimeout();
+        }, to);
+    }
+    
     this.powerConnected = function () {
-        setTimeout(this.reconnect.bind(this), 10000);
+        self.setReconnectTimer (10000);
+        //reconnectTimer = setTimeout(this.reconnect.bind(this), 10000);
     };
     this.getClient = function () {
         return client;
